@@ -16,7 +16,7 @@ const chat = async (req, res) => {
     return res.status(400).json({ error: "Prompt is required" });
   }
 
-  const model = genAI.getGenerativeModel({ model: "gemini-2.0-pro-exp-02-05" });
+  const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash" });
   const question =
     chatId === ""
       ? `
@@ -81,7 +81,7 @@ const generateSymptomQuestions = async (req, res) => {
 
   try {
     const model = genAI.getGenerativeModel({
-      model: "gemini-2.0-pro-exp-02-05",
+      model: "gemini-2.0-flash",
     });
     const prompt = `
       As a medical professional, generate 5-7 key questions to assess a patient reporting: "${symptom}".
@@ -135,7 +135,7 @@ const generatePrescriptionFromQnA = async (req, res) => {
 
   try {
     const model = genAI.getGenerativeModel({
-      model: "gemini-2.0-pro-exp-02-05",
+      model: "gemini-2.0-flash",
     });
 
     const qnaText = qna
