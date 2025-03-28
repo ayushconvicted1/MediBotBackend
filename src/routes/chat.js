@@ -31,6 +31,9 @@ const chat = async (req, res) => {
         
         Always include a note advising when to consult a real doctor if needed.
         Don't make it too long.
+
+        If the user ask to suggest some doctors, ask them for their current city
+        and give them some suggesstions.
     `
       : prompt;
   try {
@@ -84,18 +87,20 @@ const generateSymptomQuestions = async (req, res) => {
       model: "gemini-2.0-flash",
     });
     const prompt = `
-      As a medical professional, generate 5-7 key questions to assess a patient reporting: "${symptom}".
+      As a medical professional, generate 3-4 key questions to assess a patient reporting: "${symptom}".
       The questions should cover:
       - Symptom characteristics
       - Duration and progression
       - Associated symptoms
       - Medical history
       - Lifestyle factors
+      - User's present or nearest city with country to suggest doctors for that location
       
       Return as JSON array with question objects containing:
       - question (text)
       - key (short identifier like "duration", "severity", etc.)
       - category (characteristics, history, etc.)
+      Make the questions a bit brief.
       
       Format:
       {
@@ -105,7 +110,12 @@ const generateSymptomQuestions = async (req, res) => {
             "category": "characteristics",
             "question": "How long have you been experiencing this symptom?"
           },
-          ...
+          ...,
+          {
+            "key": "location",
+            "category": "information",
+            "question": "What is the current location of the patient?"
+          }
         ]
       }
     `;
@@ -154,6 +164,7 @@ const generatePrescriptionFromQnA = async (req, res) => {
       2. Recommended medications with dosage
       3. General care instructions
       4. When to seek immediate medical attention
+      5. Suggest some doctors nearby to the user's location mentioned in one of the questions.
       
       Format the response as JSON with:
       {
@@ -167,6 +178,11 @@ const generatePrescriptionFromQnA = async (req, res) => {
         ],
         "instructions": "General care instructions",
         "warning": "When to seek immediate help",
+        "doctors": [
+          "name": "Doctor name with degree",
+          "address": "Doctor Address with hospital name if any",
+          "phone": "Phone number of clinic or doctor specified."
+        ],
         "disclaimer": "AI-generated disclaimer text"
       }
     `;

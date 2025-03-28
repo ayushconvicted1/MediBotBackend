@@ -11,10 +11,10 @@ async function generatePrescriptionPDF(prescriptionData) {
   const margin = 50;
   const maxLineWidth = 495; // 595 - 2*50 margin
   let y = page.getHeight() - margin;
-  const lineHeight = 15;
-  const sectionGap = 25;
+  const lineHeight = 14;
+  const sectionGap = 20;
   const bulletIndent = 15;
-  const minY = margin + 50; // Minimum Y position before new page
+  const minY = margin + 30;
 
   // Helper to check/create new page
   const checkForNewPage = (linesToAdd = 1) => {
@@ -36,7 +36,7 @@ async function generatePrescriptionPDF(prescriptionData) {
     color: rgb(0, 0, 0),
     maxWidth: maxLineWidth,
   });
-  y -= 30;
+  y -= 25;
 
   const today = new Date().toLocaleDateString();
   page.drawText(`Date: ${today}`, {
@@ -59,8 +59,11 @@ async function generatePrescriptionPDF(prescriptionData) {
   });
   y -= lineHeight;
 
-  const summaryLines = wrapText(prescriptionData.summary, maxLineWidth);
-  summaryLines.forEach((line) => {
+  // Process summary text with bold markers
+  const summaryWithBold = processBoldText(prescriptionData.summary);
+  let currentY = y;
+
+  summaryWithBold.forEach((segment) => {
     if (checkForNewPage()) {
       page.drawText("Medical Assessment (continued):", {
         x: margin,
@@ -70,17 +73,25 @@ async function generatePrescriptionPDF(prescriptionData) {
         maxWidth: maxLineWidth,
       });
       y -= lineHeight;
+      currentY = y;
     }
-    page.drawText(line, {
-      x: margin,
-      y,
-      size: 12,
-      font,
-      maxWidth: maxLineWidth,
+
+    const lines = wrapText(segment.text, maxLineWidth);
+    lines.forEach((line) => {
+      page.drawText(line, {
+        x: margin,
+        y: currentY,
+        size: 12,
+        font: segment.isBold ? boldFont : font,
+        maxWidth: maxLineWidth,
+      });
+      currentY -= lineHeight;
+      y = currentY;
     });
-    y -= lineHeight;
   });
-  y -= sectionGap;
+
+  y = currentY;
+  y -= sectionGap - 5;
   checkForNewPage();
 
   // --- RECOMMENDED TREATMENT ---
@@ -173,10 +184,79 @@ async function generatePrescriptionPDF(prescriptionData) {
       y -= lineHeight;
     });
 
-    y -= lineHeight / 2;
+    y -= lineHeight / 3;
   });
-  y -= sectionGap;
+  y -= sectionGap - 5;
   checkForNewPage();
+
+  // --- SUGGESTED DOCTORS ---
+  if (prescriptionData.doctors && prescriptionData.doctors.length > 0) {
+    page.drawText("Suggested Doctors:", {
+      x: margin,
+      y,
+      size: 14,
+      font: boldFont,
+      maxWidth: maxLineWidth,
+    });
+    y -= lineHeight;
+
+    prescriptionData.doctors.forEach((doctor, index) => {
+      const doctorLines =
+        (doctor.name ? 1 : 0) +
+        (doctor.address ? Math.ceil(doctor.address.length / 80) : 0) +
+        (doctor.phone ? 1 : 0) +
+        1;
+      checkForNewPage(doctorLines);
+
+      // Doctor Name
+      if (doctor.name) {
+        const nameText = `${index + 1}. ${doctor.name}`;
+        page.drawText(nameText, {
+          x: margin,
+          y,
+          size: 12,
+          font: boldFont,
+          maxWidth: maxLineWidth,
+        });
+        y -= lineHeight;
+      }
+
+      // Doctor Address
+      if (doctor.address) {
+        const addressLines = wrapText(
+          `   Address: ${doctor.address}`,
+          maxLineWidth - 15
+        );
+        addressLines.forEach((line, i) => {
+          page.drawText(line, {
+            x: margin + (i > 0 ? 30 : 15),
+            y,
+            size: 12,
+            font,
+            maxWidth: maxLineWidth - 15,
+          });
+          y -= lineHeight;
+        });
+      }
+
+      // Doctor Phone
+      if (doctor.phone) {
+        const phoneText = `   Phone: ${doctor.phone}`;
+        page.drawText(phoneText, {
+          x: margin + 15,
+          y,
+          size: 12,
+          font,
+          maxWidth: maxLineWidth - 15,
+        });
+        y -= lineHeight;
+      }
+
+      y -= lineHeight / 3;
+    });
+    y -= sectionGap - 5;
+    checkForNewPage();
+  }
 
   // --- CARE INSTRUCTIONS ---
   page.drawText("Care Instructions:", {
@@ -195,7 +275,6 @@ async function generatePrescriptionPDF(prescriptionData) {
     if (!item.text.trim()) return;
 
     if (item.isBoldHeading) {
-      // Handle bold headings (like **Bathing:**)
       const lines = wrapText(item.text, maxLineWidth - bulletIndent);
       lines.forEach((line, i) => {
         if (checkForNewPage()) {
@@ -219,7 +298,6 @@ async function generatePrescriptionPDF(prescriptionData) {
         y -= lineHeight;
       });
     } else {
-      // Handle regular bullet points
       const lines = wrapText(item.text, maxLineWidth - bulletIndent);
       lines.forEach((line, i) => {
         if (checkForNewPage()) {
@@ -247,7 +325,7 @@ async function generatePrescriptionPDF(prescriptionData) {
       });
     }
   });
-  y -= sectionGap;
+  y -= sectionGap - 5;
   checkForNewPage();
 
   // --- WARNING SECTION ---
@@ -284,7 +362,7 @@ async function generatePrescriptionPDF(prescriptionData) {
     });
     y -= lineHeight;
   });
-  y -= sectionGap;
+  y -= sectionGap - 5;
   checkForNewPage();
 
   // --- DISCLAIMER ---
@@ -327,7 +405,38 @@ async function generatePrescriptionPDF(prescriptionData) {
   return new Blob([pdfBytes], { type: "application/pdf" });
 }
 
-// Parse instruction items with bold headings
+// Helper function to process text with **bold** markers
+function processBoldText(text) {
+  if (!text) return [{ text: "", isBold: false }];
+
+  const segments = [];
+  const boldRegex = /\*\*(.*?)\*\*/g;
+  let lastIndex = 0;
+  let match;
+
+  while ((match = boldRegex.exec(text)) !== null) {
+    if (match.index > lastIndex) {
+      segments.push({
+        text: text.substring(lastIndex, match.index),
+        isBold: false,
+      });
+    }
+    segments.push({
+      text: match[1],
+      isBold: true,
+    });
+    lastIndex = match.index + match[0].length;
+  }
+  if (lastIndex < text.length) {
+    segments.push({
+      text: text.substring(lastIndex),
+      isBold: false,
+    });
+  }
+
+  return segments;
+}
+
 function parseInstructionItems(text) {
   if (!text) return [];
 
@@ -337,7 +446,6 @@ function parseInstructionItems(text) {
   lines.forEach((line) => {
     if (!line.trim()) return;
 
-    // Check for bold headings (format: 1. **Bathing:**)
     const boldMatch = line.match(/^(\d+\.)\s*\*\*(.*?)\*\*(.*)$/);
     if (boldMatch) {
       const [, number, heading, content] = boldMatch;
@@ -345,16 +453,12 @@ function parseInstructionItems(text) {
         isBoldHeading: true,
         text: `${number} ${heading}:${content}`,
       });
-    }
-    // Check for regular bullet points
-    else if (line.match(/^(\d+\.|\*|\-)\s/)) {
+    } else if (line.match(/^(\d+\.|\*|\-)\s/)) {
       items.push({
         isBoldHeading: false,
         text: line,
       });
-    }
-    // Continuation of previous item
-    else if (items.length > 0) {
+    } else if (items.length > 0) {
       items[items.length - 1].text += ` ${line.trim()}`;
     }
   });
@@ -362,13 +466,12 @@ function parseInstructionItems(text) {
   return items;
 }
 
-// Improved text wrapping
 function wrapText(text, maxWidth) {
   if (!text) return [];
 
   const lines = text.split("\n");
   let result = [];
-  const avgCharWidth = 6; // Approximate width of a character
+  const avgCharWidth = 6;
 
   lines.forEach((line) => {
     if (!line.trim()) return;
